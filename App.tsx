@@ -52,7 +52,9 @@ import {
   CheckCircle2,
   ArrowRight,
   Trophy,
-  Loader2
+  Loader2,
+  Edit2, // 新增編輯圖示
+  Plus   // 新增加號圖示
 } from 'lucide-react';
 
 // ==========================================
@@ -72,7 +74,6 @@ const distributeIncome = (
     strategic: [] as any[]
   };
 
-  // 1. 【生存】優先處理即將到期的關鍵債務
   upcomingDebts.forEach(debt => {
     if (remaining > 0) {
       const gap = debt.amount || 0;
@@ -84,12 +85,10 @@ const distributeIncome = (
     }
   });
 
-  // 2. 【生活】根據使用者設定的 dailyBase 來預留飯錢
   const livingNeeds = daysToNextIncome * dailyBase;
   result.living = Math.min(remaining, livingNeeds);
   remaining -= result.living;
 
-  // 3. 【夢想】剩餘金額按比例分配
   if (remaining > 0) {
     savingsPlans.forEach(plan => {
       if (plan.allocationPercentage && plan.allocationPercentage > 0) {
@@ -121,7 +120,7 @@ const App: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // 資料庫 (Master Data) - 這是總資料，包含所有帳本
+  // 資料庫 (Master Data)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [cardDebts, setCardDebts] = useState<CreditCardDebt[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
@@ -144,17 +143,16 @@ const App: React.FC = () => {
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
-  // 🚀 多帳本切換狀態
-  const [ledgers, setLedgers] = useState([
+  // 🚀 多帳本系統 (Ledger System)
+  const [ledgers, setLedgers] = useState<{ id: string, name: string }[]>([
     { id: 'personal', name: '🏠 個人生活' },
     { id: 'business', name: '💼 公司業務' },
     { id: 'travel', name: '✈️ 日本旅遊' }
   ]);
   const [activeLedgerId, setActiveLedgerId] = useState('personal');
+  const [showLedgerManager, setShowLedgerManager] = useState(false); // 控制帳本管理彈窗
 
-  // ⭐ 核心過濾器：計算「目前應該顯示的資料」
-  // 邏輯：檢查每個資料的 ledgerId，如果沒有 (舊資料)，預設歸類為 personal
-  // 使用 as any 繞過型別檢查，確保執行時邏輯正確
+  // ⭐ 核心過濾器
   const displayedTransactions = transactions.filter(t => (t.ledgerId || 'personal') === activeLedgerId);
   const displayedDebts = cardDebts.filter(d => ((d as any).ledgerId || 'personal') === activeLedgerId);
   const displayedRecurring = recurringExpenses.filter(r => ((r as any).ledgerId || 'personal') === activeLedgerId);
@@ -169,7 +167,7 @@ const App: React.FC = () => {
 
   // 版本控制
   useEffect(() => {
-    const VERSION_TAG = '20260218-MultiLedger-UserReady';
+    const VERSION_TAG = '20260218-LedgerManager';
     const lastVersion = localStorage.getItem('app_version');
     if (lastVersion !== VERSION_TAG) {
       localStorage.setItem('app_version', VERSION_TAG);
@@ -177,7 +175,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 自動存檔 (存的是 Master Data)
+  // 自動存檔 (包含 ledgers)
   useEffect(() => {
     if (!isReady || !user || !initialData?.accounts || initialData.accounts.length === 0) return;
     const timer = setTimeout(async () => {
@@ -186,12 +184,13 @@ const App: React.FC = () => {
         userEmail: user.email,
         initialData: { ...initialData, createdAt: initialData.createdAt || Date.now() },
         transactions, cardDebts, creditCards, recurringExpenses, savingsPlans, incomeCategories, expenseCategories,
+        ledgers, // 👈 關鍵：現在連帳本列表也會存檔了
         lastUpdated: Date.now()
       };
       try { await saveUserLedger(user.uid, dataToSave); } catch (err) { console.error("❌ 備份失敗:", err); }
     }, 3000);
     return () => clearTimeout(timer);
-  }, [transactions, cardDebts, creditCards, recurringExpenses, savingsPlans, initialData, isReady, user, incomeCategories, expenseCategories]);
+  }, [transactions, cardDebts, creditCards, recurringExpenses, savingsPlans, initialData, isReady, user, incomeCategories, expenseCategories, ledgers]);
 
   // 初始讀取
   useEffect(() => {
@@ -218,6 +217,10 @@ const App: React.FC = () => {
             setInitialData(cloudData.initialData || { accounts: [], fixedAssets: [], categoryBudgets: [] });
             setIncomeCategories(cloudData.incomeCategories || DEFAULT_INC_CATS);
             setExpenseCategories(cloudData.expenseCategories || DEFAULT_EXP_CATS);
+            // 讀取帳本列表 (如果沒有則使用預設)
+            if (cloudData.ledgers && cloudData.ledgers.length > 0) {
+              setLedgers(cloudData.ledgers);
+            }
           }
         } catch (e) { console.error("❌ 雲端讀取失敗：", e); }
       }
@@ -233,12 +236,12 @@ const App: React.FC = () => {
         userEmail: user.email || "",
         transactions: currentTs,
         cardDebts: currentDebts,
-        creditCards, recurringExpenses, savingsPlans, initialData, incomeCategories, expenseCategories
+        creditCards, recurringExpenses, savingsPlans, initialData, incomeCategories, expenseCategories,
+        ledgers // 👈 同步時也要帶上帳本
       });
     } catch (e) { console.error("❌ 同步失敗：", e); }
   };
 
-  // ⭐ 新增交易時，自動打上目前的 activeLedgerId 標籤
   const handleAddTransaction = async (newT: Omit<Transaction, 'id'>) => {
     const t: Transaction = {
       ...newT,
@@ -266,7 +269,6 @@ const App: React.FC = () => {
     if (user && isReady) await syncAllToCloud(updatedTs, cardDebts);
   };
 
-  // ⭐ 新增固定收支時，自動打上標籤
   const handleAddRecurring = (item: any) => {
     const newItem = { ...item, id: crypto.randomUUID(), ledgerId: activeLedgerId };
     setRecurringExpenses(prev => [...prev, newItem]);
@@ -279,28 +281,24 @@ const App: React.FC = () => {
     if (user && isReady) {
       await saveUserLedger(user.uid, {
         ...initialData, transactions, cardDebts, creditCards, savingsPlans, incomeCategories, expenseCategories,
-        recurringExpenses: nextRecurring
+        recurringExpenses: nextRecurring, ledgers
       });
     }
   };
 
-  // ⭐ 新增債務時，自動打上標籤
   const handleAddDebt = (newD: any) => {
     const debtWithLedger = { ...newD, id: crypto.randomUUID(), isPaidThisMonth: false, ledgerId: activeLedgerId };
     setCardDebts(prev => [...prev, debtWithLedger]);
     setActiveTab('cards');
   };
 
-  // ⭐ 新增存錢目標時，自動打上標籤
   const handleAddPlan = (p: any) => {
     setSavingsPlans(prev => [...prev, { ...p, id: crypto.randomUUID(), ledgerId: activeLedgerId }]);
   };
 
   const handleConfirmAllocation = async (finalAdvice: any) => {
     const updatedPlans = savingsPlans.map(plan => {
-      // 這裡只會更新屬於目前帳本的計畫
       if ((plan as any).ledgerId !== activeLedgerId && (plan as any).ledgerId) return plan;
-
       const match = finalAdvice.strategic.find((s: any) => s.name === plan.name);
       return match ? { ...plan, currentAmount: (plan.currentAmount || 0) + match.amount } : plan;
     });
@@ -309,7 +307,7 @@ const App: React.FC = () => {
     if (user && isReady) {
       await saveUserLedger(user.uid, {
         userEmail: user.email, initialData, transactions, cardDebts, creditCards,
-        recurringExpenses, savingsPlans: updatedPlans, incomeCategories, expenseCategories, lastUpdated: Date.now()
+        recurringExpenses, savingsPlans: updatedPlans, incomeCategories, expenseCategories, ledgers, lastUpdated: Date.now()
       });
     }
     setShowAllocationModal(false);
@@ -347,7 +345,7 @@ const App: React.FC = () => {
           date: new Date().toISOString().split('T')[0],
           paymentMethod: PaymentMethod.CASH,
           accountId: initialData.accounts[0]?.id,
-          ledgerId: activeLedgerId // 債務還款記錄也跟隨目前帳本
+          ledgerId: activeLedgerId
         };
         nextTransactions = [newExp, ...nextTransactions];
         return {
@@ -369,6 +367,40 @@ const App: React.FC = () => {
     setCardDebts(newDebts);
     if (user && isReady) await syncAllToCloud(transactions, newDebts);
   };
+
+  // 🚀 帳本管理邏輯
+  const handleCreateLedger = () => {
+    const name = prompt("請輸入新帳本名稱：");
+    if (name) {
+      const newLedger = { id: crypto.randomUUID(), name };
+      const newLedgers = [...ledgers, newLedger];
+      setLedgers(newLedgers);
+      setActiveLedgerId(newLedger.id); // 自動切換到新帳本
+      setShowLedgerManager(false);
+    }
+  };
+
+  const handleDeleteLedger = (id: string) => {
+    if (ledgers.length <= 1) {
+      alert("系統至少需要保留一個帳本！");
+      return;
+    }
+    if (confirm("確定要刪除此帳本嗎？該帳本下的所有資料雖然會保留在資料庫，但將無法直接訪問。")) {
+      const newLedgers = ledgers.filter(l => l.id !== id);
+      setLedgers(newLedgers);
+      if (activeLedgerId === id) {
+        setActiveLedgerId(newLedgers[0].id); // 如果刪除的是當前帳本，切換到第一個
+      }
+    }
+  };
+
+  const handleRenameLedger = (id: string, oldName: string) => {
+    const newName = prompt("請輸入新的名稱：", oldName);
+    if (newName) {
+      setLedgers(prev => prev.map(l => l.id === id ? { ...l, name: newName } : l));
+    }
+  };
+
 
   if (!isReady) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-emerald-600 w-10 h-10" /></div>;
 
@@ -462,21 +494,29 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* 🚀 帳本切換器 */}
+      {/* 🚀 帳本切換器 (增強版：支援自定義) */}
       <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex justify-between items-center">
         <div className="relative group">
           <button className="flex items-center gap-2 text-xl font-black text-slate-800">
             {ledgers.find(l => l.id === activeLedgerId)?.name}
             <ChevronDown size={20} className="text-slate-400" />
           </button>
-          <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-50">
+          <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-50">
             {ledgers.map(ledger => (
-              <button key={ledger.id} onClick={() => setActiveLedgerId(ledger.id)} className={`w-full text-left px-5 py-3 text-sm font-bold hover:bg-slate-50 transition-colors ${activeLedgerId === ledger.id ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}>
-                {ledger.name}
-              </button>
+              <div key={ledger.id} className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${activeLedgerId === ledger.id ? 'bg-indigo-50' : ''}`}>
+                <button onClick={() => setActiveLedgerId(ledger.id)} className={`text-left text-sm font-bold flex-1 ${activeLedgerId === ledger.id ? 'text-indigo-600' : 'text-slate-600'}`}>
+                  {ledger.name}
+                </button>
+                {/* 只有當不是個人帳本(預設第一個)時，才允許編輯/刪除 */}
+                <div className="flex items-center gap-1">
+                  <button onClick={(e) => { e.stopPropagation(); handleRenameLedger(ledger.id, ledger.name); }} className="p-1 text-slate-300 hover:text-indigo-500"><Edit2 size={12} /></button>
+                </div>
+              </div>
             ))}
             <div className="border-t border-slate-100 p-2">
-              <button className="w-full text-center text-xs font-black text-slate-400 hover:text-indigo-500 py-2">+ 新增帳本</button>
+              <button onClick={() => setShowLedgerManager(true)} className="w-full text-center text-xs font-black text-slate-400 hover:text-indigo-500 py-2 flex items-center justify-center gap-1">
+                <Settings size={12} /> 管理帳本
+              </button>
             </div>
           </div>
         </div>
@@ -546,7 +586,6 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* ⭐ 這裡全數改用 displayedX 系列變數，確保畫面只顯示該帳本內容 */}
                 {reportMode === 'stats' && (
                   <div className="space-y-8">
                     <BudgetMonitor transactions={displayedTransactions} budgets={initialData.categoryBudgets || []} />
@@ -618,8 +657,6 @@ const App: React.FC = () => {
                         {(() => {
                           const expenseCalendar: Record<string, number> = {};
                           const addExpense = (dateStr: string, amount: number) => { if (!expenseCalendar[dateStr]) expenseCalendar[dateStr] = 0; expenseCalendar[dateStr] += amount; };
-
-                          // 預測也只用 displayedTransactions (目前帳本)
                           displayedTransactions.forEach(t => {
                             if (t.type === TransactionType.EXPENSE && t.paymentMethod === PaymentMethod.CREDIT_CARD) {
                               const card = creditCards.find(c => c.id === t.creditCardId || c.name === t.cardName);
@@ -635,10 +672,8 @@ const App: React.FC = () => {
                               }
                             }
                           });
-                          // 債務和固定支出也使用 displayedX 系列，確保預測跟著帳本走
                           displayedDebts.forEach(debt => { if (!debt.isPaidThisMonth) { const card = creditCards.find(c => c.name === debt.cardName); const pDay = card?.paymentDay || 25; for (let i = 0; i < 3; i++) { const d = new Date(); d.setMonth(d.getMonth() + i); d.setDate(pDay); if (d > new Date()) addExpense(format(d, 'yyyy-MM-dd'), Number(debt.monthlyAmount)); } } });
                           for (let i = 0; i < 60; i++) { const d = addDays(new Date(), i); const dayNum = d.getDate(); const dateStr = format(d, 'yyyy-MM-dd'); displayedRecurring.forEach(re => { if (re.dayOfMonth === dayNum && re.type.toUpperCase() === 'EXPENSE') addExpense(dateStr, Number(re.amount)); }); }
-
                           return Array.from({ length: 8 }).map((_, i) => {
                             const weekStart = addDays(new Date(), i * 7); const weekEnd = addDays(weekStart, 6); const weekNum = i + 1;
                             let weeklyTotalExpense = 0; for (let d = 0; d < 7; d++) { const dayStr = format(addDays(weekStart, d), 'yyyy-MM-dd'); if (expenseCalendar[dayStr]) weeklyTotalExpense += expenseCalendar[dayStr]; }
@@ -680,7 +715,7 @@ const App: React.FC = () => {
           { id: 'input', label: '記帳', icon: PlusCircle },
           { id: 'daily', label: '報表', icon: BarChart3 },
           { id: 'savings', label: '目標', icon: Target },
-          { id: 'budget', label: '計劃', icon: PieChart },
+          // { id: 'budget', label: '計劃', icon: PieChart }, // 👈 這裡已經被我註解掉，不會顯示
           { id: 'cards', label: '債務', icon: CreditCardIcon }
         ].map((config) => {
           const IconComponent = config.icon;
@@ -708,11 +743,41 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 🚀 帳本管理彈窗 (新增功能) */}
+      {showLedgerManager && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 relative shadow-2xl">
+            <button onClick={() => setShowLedgerManager(false)} className="absolute top-6 right-6"><X className="w-6 h-6 text-slate-400 hover:text-slate-800" /></button>
+            <h2 className="text-xl font-black mb-6 text-slate-800 flex items-center gap-2"><Settings className="text-indigo-500" /> 帳本管理中心</h2>
+
+            <div className="space-y-4 mb-8 max-h-[50vh] overflow-y-auto">
+              {ledgers.map(l => (
+                <div key={l.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="font-bold text-slate-700">{l.name}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleRenameLedger(l.id, l.name)} className="p-2 bg-white rounded-xl text-slate-400 hover:text-indigo-600 shadow-sm"><Edit2 size={16} /></button>
+                    {/* 至少保留一個帳本 */}
+                    {ledgers.length > 1 && (
+                      <button onClick={() => handleDeleteLedger(l.id)} className="p-2 bg-white rounded-xl text-slate-400 hover:text-rose-600 shadow-sm"><Trash2 size={16} /></button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleCreateLedger} className="w-full py-4 rounded-2xl bg-slate-900 text-white font-black flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-xl">
+              <Plus size={20} /> 建立新帳本
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
 
-// 輔助組件
+// 輔助組件 (保持不變)
 const CategoryList: React.FC<any> = ({ title, categories, setCategories, color, budgets, onUpdateBudget }) => {
   return (
     <div className="space-y-4">
