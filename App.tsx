@@ -76,7 +76,14 @@ const ChevronLeft = createIcon('ChevronLeft');
 const ChevronRight = createIcon('ChevronRight');
 const TrendingUp = createIcon('TrendingUp');
 const TrendingDown = createIcon('TrendingDown');
-
+const [activeTab, setActiveTab] = useState('input');
+// 🚀 新增：帳本狀態管理
+const [ledgers, setLedgers] = useState([
+  { id: 'personal', name: '🏠 個人生活' },
+  { id: 'business', name: '💼 公司業務' },
+  { id: 'travel', name: '✈️ 日本旅遊' }
+]);
+const [activeLedgerId, setActiveLedgerId] = useState('personal');
 const distributeIncome = (
   amount: number,
   upcomingDebts: any[],
@@ -636,6 +643,38 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {/* --- 🚀 新增：帳本切換器 --- */}
+      <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex justify-between items-center">
+        <div className="relative group">
+          <button className="flex items-center gap-2 text-xl font-black text-slate-800">
+            {ledgers.find(l => l.id === activeLedgerId)?.name}
+            <ChevronDown size={20} className="text-slate-400" />
+          </button>
+
+          {/* 下拉選單 (簡單版) */}
+          <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-50">
+            {ledgers.map(ledger => (
+              <button
+                key={ledger.id}
+                onClick={() => setActiveLedgerId(ledger.id)}
+                className={`w-full text-left px-5 py-3 text-sm font-bold hover:bg-slate-50 transition-colors ${activeLedgerId === ledger.id ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}
+              >
+                {ledger.name}
+              </button>
+            ))}
+            <div className="border-t border-slate-100 p-2">
+              <button className="w-full text-center text-xs font-black text-slate-400 hover:text-indigo-500 py-2">
+                + 新增帳本
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 右邊可以是設定按鈕 */}
+        <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-all">
+          <Settings size={20} />
+        </button>
+      </div>
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* --- 系統設定區塊 --- */}
         {showSettings && (
