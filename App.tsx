@@ -523,22 +523,113 @@ const App: React.FC = () => {
                 )}
                 {reportMode === 'calendar' && (
                   <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
-                    <div className="lg:col-span-8"><TransactionCalendar transactions={transactions} onDateClick={(date) => setSelectedDate(date)} /></div>
+                    {/* 左側：核心日曆組件 */}
+                    <div className="lg:col-span-8">
+                      <TransactionCalendar transactions={transactions} onDateClick={(date) => setSelectedDate(date)} />
+                    </div>
+
+                    {/* 右側：當日細節戰報 (豪華交互版) */}
                     <div className="lg:col-span-4 space-y-4">
-                      {/* 右側日曆戰報 */}
                       <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-slate-100 min-h-[500px] flex flex-col">
+                        {/* 標題區 */}
                         <div className="flex justify-between items-start mb-6">
-                          <div><h3 className="text-xl font-black text-slate-800">{selectedDate}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Report</p></div>
-                          <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><CalendarIcon size={20} /></div>
+                          <div>
+                            <h3 className="text-xl font-black text-slate-800 tracking-tighter">{selectedDate}</h3>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Intelligence Report</p>
+                          </div>
+                          <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
+                            <CalendarIcon size={20} strokeWidth={3} />
+                          </div>
                         </div>
+
+                        {/* 交易列表區 (可編輯版) */}
                         <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                          {transactions.filter(t => t.date === selectedDate).map(t => (
-                            <div key={t.id} className="p-4 bg-slate-50 rounded-[1.5rem] flex justify-between">
-                              <div><p className="font-bold text-slate-700">{t.category}</p><p className="text-xs text-slate-400">{t.note}</p></div>
-                              <div className={`font-black ${t.type === 'INCOME' ? 'text-emerald-500' : 'text-rose-500'}`}>{t.amount}</div>
+                          {transactions.filter(t => t.date === selectedDate).length > 0 ? (
+                            transactions.filter(t => t.date === selectedDate).map((t) => (
+                              <div key={t.id} className="p-4 bg-slate-50 rounded-[1.5rem] border border-slate-100 flex flex-col gap-3 group hover:bg-white hover:shadow-lg hover:border-indigo-100 transition-all duration-300">
+
+                                {/* 第一層：分類與金額 */}
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-xl ${t.type.toLowerCase() === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                      {t.type.toLowerCase() === 'income' ? <TrendingUp size={14} strokeWidth={3} /> : <TrendingDown size={14} strokeWidth={3} />}
+                                    </div>
+                                    {/* 可編輯分類 */}
+                                    <input
+                                      type="text"
+                                      value={t.category}
+                                      onChange={(e) => handleUpdateTransaction({ ...t, category: e.target.value })}
+                                      className="bg-transparent text-xs font-black text-slate-700 outline-none w-24 focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`text-xs font-black ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                      {t.type.toLowerCase() === 'income' ? '+' : '-'}
+                                    </span>
+                                    {/* 可編輯金額 */}
+                                    <input
+                                      type="number"
+                                      value={t.amount}
+                                      onChange={(e) => handleUpdateTransaction({ ...t, amount: Number(e.target.value) })}
+                                      className={`w-24 bg-transparent text-sm font-black text-right outline-none focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* 第二層：備註與支付方式 */}
+                                <div className="flex justify-between items-end pl-11">
+                                  <div className="flex flex-col gap-1 flex-1">
+                                    {/* 可編輯備註 */}
+                                    <input
+                                      type="text"
+                                      value={t.note || ''}
+                                      placeholder="點擊新增備註..."
+                                      onChange={(e) => handleUpdateTransaction({ ...t, note: e.target.value })}
+                                      className="bg-transparent text-[10px] text-slate-400 font-bold outline-none w-full focus:text-slate-600 placeholder:text-slate-300"
+                                    />
+
+                                    {/* 支付細節顯示 (信用卡/現金) */}
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={`w-1.5 h-1.5 rounded-full ${t.paymentMethod === PaymentMethod.CREDIT_CARD ? 'bg-indigo-400' : 'bg-emerald-400'}`}></div>
+                                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                                        {t.paymentMethod === PaymentMethod.CREDIT_CARD
+                                          ? `信用卡 (${creditCards.find(c => c.id === t.creditCardId)?.name || t.cardName || '未知'})`
+                                          : `現金 (${initialData.accounts.find(a => a.id === t.accountId)?.name || '帳戶'})`}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* 刪除按鈕 (Hover 才顯示) */}
+                                  <button
+                                    onClick={() => { if (window.confirm('總裁，確定要銷毀此紀錄嗎？')) setTransactions(prev => prev.filter(x => x.id !== t.id)) }}
+                                    className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                              <Sparkles size={24} className="opacity-20 mb-2" />
+                              <p className="text-[10px] font-black uppercase tracking-widest">本日無戰事</p>
                             </div>
-                          ))}
+                          )}
                         </div>
+
+                        {/* 底部：當日結算統計 (自動計算) */}
+                        {transactions.filter(t => t.date === selectedDate).length > 0 && (
+                          <div className="mt-6 pt-6 border-t border-dashed border-slate-200">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">當日淨結算</span>
+                              <span className={`text-lg font-black ${transactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0) >= 0
+                                ? 'text-emerald-600' : 'text-rose-500'
+                                }`}>
+                                ${transactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
