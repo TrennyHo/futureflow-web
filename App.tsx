@@ -3,7 +3,6 @@ import {
   Transaction, TransactionType, CreditCardDebt,
   CreditCard, PaymentMethod, RecurringExpense, InitialData, Account, SavingsPlan
 } from './types';
-// 💡 修正 1: 移除 import 路徑中的 .ts/.tsx 副檔名 (Vite 標準)
 
 // 1. 組件導入區
 import { TransactionForm } from './components/TransactionForm';
@@ -26,11 +25,11 @@ import { format, addDays } from 'date-fns';
 // 3. Firebase 邏輯區
 import { auth, loginWithGoogle, logout, onAuthStateChanged, getUserLedger, saveUserLedger } from './firebase';
 
-// ⭐ 核心修正：統一使用標準 Lucide 匯入，不再使用 createIcon 引擎
+// 4. 標準圖示導入
 import {
   LayoutDashboard,
   Wallet,
-  CreditCard as CreditCardIcon, // 💡 修正 2: 改名避免與 Type 衝突
+  CreditCard as CreditCardIcon,
   Calendar as CalendarIcon,
   TrendingUp,
   TrendingDown,
@@ -108,7 +107,6 @@ const distributeIncome = (
   return { ...result, freeCash: remaining };
 };
 
-
 // ==========================================
 // 主應用程式 App
 // ==========================================
@@ -122,6 +120,8 @@ const App: React.FC = () => {
   const [reportMode, setReportMode] = useState<'stats' | 'calendar' | 'forecast'>('stats');
   const [isReady, setIsReady] = useState(false);
   const [user, setUser] = useState<any>(null);
+
+  // 資料庫 (Master Data) - 這是總資料，包含所有帳本
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [cardDebts, setCardDebts] = useState<CreditCardDebt[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
@@ -144,7 +144,7 @@ const App: React.FC = () => {
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
-  // 🚀 新增：多帳本切換狀態
+  // 🚀 多帳本切換狀態
   const [ledgers, setLedgers] = useState([
     { id: 'personal', name: '🏠 個人生活' },
     { id: 'business', name: '💼 公司業務' },
@@ -152,16 +152,24 @@ const App: React.FC = () => {
   ]);
   const [activeLedgerId, setActiveLedgerId] = useState('personal');
 
-  // 🚀 決策引擎狀態
+  // ⭐ 核心過濾器：計算「目前應該顯示的資料」
+  // 邏輯：檢查每個資料的 ledgerId，如果沒有 (舊資料)，預設歸類為 personal
+  // 使用 as any 繞過型別檢查，確保執行時邏輯正確
+  const displayedTransactions = transactions.filter(t => (t.ledgerId || 'personal') === activeLedgerId);
+  const displayedDebts = cardDebts.filter(d => ((d as any).ledgerId || 'personal') === activeLedgerId);
+  const displayedRecurring = recurringExpenses.filter(r => ((r as any).ledgerId || 'personal') === activeLedgerId);
+  const displayedPlans = savingsPlans.filter(p => ((p as any).ledgerId || 'personal') === activeLedgerId);
+
+  // 決策引擎狀態
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [pendingAllocation, setPendingAllocation] = useState<{
     income: Transaction;
     advice: ReturnType<typeof distributeIncome>;
   } | null>(null);
 
-  // 1. 版本控制 (強制刷新)
+  // 版本控制
   useEffect(() => {
-    const VERSION_TAG = '20260218-FullRestore';
+    const VERSION_TAG = '20260218-MultiLedger-UserReady';
     const lastVersion = localStorage.getItem('app_version');
     if (lastVersion !== VERSION_TAG) {
       localStorage.setItem('app_version', VERSION_TAG);
@@ -169,7 +177,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 2. 自動存檔機制
+  // 自動存檔 (存的是 Master Data)
   useEffect(() => {
     if (!isReady || !user || !initialData?.accounts || initialData.accounts.length === 0) return;
     const timer = setTimeout(async () => {
@@ -185,7 +193,7 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [transactions, cardDebts, creditCards, recurringExpenses, savingsPlans, initialData, isReady, user, incomeCategories, expenseCategories]);
 
-  // 3. 初始讀取
+  // 初始讀取
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (currentUser: any) => {
       setIsReady(false);
@@ -195,7 +203,6 @@ const App: React.FC = () => {
           console.log(`[系統] 正在調閱帳戶: ${currentUser.email}...`);
           let cloudData = await getUserLedger(currentUser.uid);
 
-          // 搬運舊資產邏輯
           if (!cloudData || !cloudData.transactions || cloudData.transactions.length === 0) {
             const oldUID = "lgx8vnTipfaL9e4TbyIBYAA1MFL2";
             const oldData = await getUserLedger(oldUID);
@@ -219,7 +226,6 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 4. 業務邏輯函數群
   const syncAllToCloud = async (currentTs: Transaction[], currentDebts: CreditCardDebt[]) => {
     if (!user || !isReady) return;
     try {
@@ -232,15 +238,20 @@ const App: React.FC = () => {
     } catch (e) { console.error("❌ 同步失敗：", e); }
   };
 
+  // ⭐ 新增交易時，自動打上目前的 activeLedgerId 標籤
   const handleAddTransaction = async (newT: Omit<Transaction, 'id'>) => {
-    const t: Transaction = { ...newT, id: crypto.randomUUID() };
+    const t: Transaction = {
+      ...newT,
+      id: crypto.randomUUID(),
+      ledgerId: activeLedgerId
+    };
     const updatedTransactions = [t, ...transactions].sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
     setTransactions(updatedTransactions);
 
     if (t.type === TransactionType.INCOME) {
-      const advice = distributeIncome(t.amount, cardDebts, savingsPlans, 7, dailySpendingGoal);
+      const advice = distributeIncome(t.amount, displayedDebts, displayedPlans, 7, dailySpendingGoal);
       setPendingAllocation({ income: t, advice: advice });
       setShowAllocationModal(true);
     }
@@ -255,6 +266,13 @@ const App: React.FC = () => {
     if (user && isReady) await syncAllToCloud(updatedTs, cardDebts);
   };
 
+  // ⭐ 新增固定收支時，自動打上標籤
+  const handleAddRecurring = (item: any) => {
+    const newItem = { ...item, id: crypto.randomUUID(), ledgerId: activeLedgerId };
+    setRecurringExpenses(prev => [...prev, newItem]);
+    setActiveTab('budget');
+  };
+
   const handleUpdateRecurring = async (updated: RecurringExpense) => {
     const nextRecurring = recurringExpenses.map(item => item.id === updated.id ? updated : item);
     setRecurringExpenses(nextRecurring);
@@ -266,8 +284,23 @@ const App: React.FC = () => {
     }
   };
 
+  // ⭐ 新增債務時，自動打上標籤
+  const handleAddDebt = (newD: any) => {
+    const debtWithLedger = { ...newD, id: crypto.randomUUID(), isPaidThisMonth: false, ledgerId: activeLedgerId };
+    setCardDebts(prev => [...prev, debtWithLedger]);
+    setActiveTab('cards');
+  };
+
+  // ⭐ 新增存錢目標時，自動打上標籤
+  const handleAddPlan = (p: any) => {
+    setSavingsPlans(prev => [...prev, { ...p, id: crypto.randomUUID(), ledgerId: activeLedgerId }]);
+  };
+
   const handleConfirmAllocation = async (finalAdvice: any) => {
     const updatedPlans = savingsPlans.map(plan => {
+      // 這裡只會更新屬於目前帳本的計畫
+      if ((plan as any).ledgerId !== activeLedgerId && (plan as any).ledgerId) return plan;
+
       const match = finalAdvice.strategic.find((s: any) => s.name === plan.name);
       return match ? { ...plan, currentAmount: (plan.currentAmount || 0) + match.amount } : plan;
     });
@@ -313,7 +346,8 @@ const App: React.FC = () => {
           note: `還款: ${debt.cardName}`,
           date: new Date().toISOString().split('T')[0],
           paymentMethod: PaymentMethod.CASH,
-          accountId: initialData.accounts[0]?.id
+          accountId: initialData.accounts[0]?.id,
+          ledgerId: activeLedgerId // 債務還款記錄也跟隨目前帳本
         };
         nextTransactions = [newExp, ...nextTransactions];
         return {
@@ -336,7 +370,6 @@ const App: React.FC = () => {
     if (user && isReady) await syncAllToCloud(transactions, newDebts);
   };
 
-  // 5. 渲染邏輯
   if (!isReady) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-emerald-600 w-10 h-10" /></div>;
 
   if (!user) return (
@@ -356,7 +389,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 relative pb-20">
-      {/* 授權檢查區塊 (ShieldAlert 使用處) */}
+      {/* 授權檢查 */}
       {user && isReady && (() => {
         const now = Date.now();
         const createdAt = initialData.createdAt || now;
@@ -422,14 +455,14 @@ const App: React.FC = () => {
             <button onClick={() => setShowSettings(!showSettings)} className={`p-2 rounded-xl transition-all ${showSettings ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
               <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => { if (window.confirm('總裁，確定要登出並結束本次財務巡視嗎？')) logout(); }} className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl ml-1 transition-all">
+            <button onClick={() => { if (window.confirm('確定要登出並結束使用嗎？')) logout(); }} className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl ml-1 transition-all">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* 🚀 帳本切換器 (完整保留) */}
+      {/* 🚀 帳本切換器 */}
       <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex justify-between items-center">
         <div className="relative group">
           <button className="flex items-center gap-2 text-xl font-black text-slate-800">
@@ -490,10 +523,10 @@ const App: React.FC = () => {
               </div>
               <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 p-2 overflow-visible">
                 {inputSubTab === 'daily' && <TransactionForm onAdd={handleAddTransaction} creditCards={creditCards} accounts={initialData.accounts} incomeCategories={incomeCategories} expenseCategories={expenseCategories} onOpenSettings={(tab: any) => { setShowSettings(true); setSettingsTab(tab); }} />}
-                {inputSubTab === 'debt' && <div className="p-6"><CreditCardForm onAdd={(newD) => { setCardDebts(prev => [...prev, { ...newD, id: crypto.randomUUID(), isPaidThisMonth: false }]); setActiveTab('cards'); }} /></div>}
-                {inputSubTab === 'recurring' && <div className="p-6"><RecurringForm onAdd={(item: any) => { setRecurringExpenses(prev => [...prev, { ...item, id: crypto.randomUUID() }]); setActiveTab('budget'); }} creditCards={creditCards} accounts={initialData.accounts} incomeCategories={incomeCategories} expenseCategories={expenseCategories} /></div>}
+                {inputSubTab === 'debt' && <div className="p-6"><CreditCardForm onAdd={handleAddDebt} /></div>}
+                {inputSubTab === 'recurring' && <div className="p-6"><RecurringForm onAdd={handleAddRecurring} creditCards={creditCards} accounts={initialData.accounts} incomeCategories={incomeCategories} expenseCategories={expenseCategories} /></div>}
               </div>
-              <AIAdvisor transactions={transactions} />
+              <AIAdvisor transactions={displayedTransactions} />
             </div>
           )}
 
@@ -513,120 +546,60 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* ⭐ 這裡全數改用 displayedX 系列變數，確保畫面只顯示該帳本內容 */}
                 {reportMode === 'stats' && (
                   <div className="space-y-8">
-                    <BudgetMonitor transactions={transactions} budgets={initialData.categoryBudgets || []} />
-                    <BalanceSheet transactions={transactions} cardDebts={cardDebts} creditCards={creditCards} recurringExpenses={recurringExpenses} savingsPlans={savingsPlans} initialData={initialData} onPayDebt={handlePayCardInstallment} />
-                    <BudgetPlanner transactions={transactions} cardDebts={cardDebts} creditCards={creditCards} recurringExpenses={recurringExpenses} onDelete={(id) => setTransactions(prev => prev.filter(t => t.id !== id))} onDeleteRecurring={(id) => setRecurringExpenses(prev => prev.filter(i => i.id !== id))} onUpdateRecurring={handleUpdateRecurring} />
-                    <div className="w-full"><Dashboard transactions={transactions} cardDebts={cardDebts} /></div>
+                    <BudgetMonitor transactions={displayedTransactions} budgets={initialData.categoryBudgets || []} />
+                    <BalanceSheet transactions={displayedTransactions} cardDebts={displayedDebts} creditCards={creditCards} recurringExpenses={displayedRecurring} savingsPlans={displayedPlans} initialData={initialData} onPayDebt={handlePayCardInstallment} />
+                    <BudgetPlanner transactions={displayedTransactions} cardDebts={displayedDebts} creditCards={creditCards} recurringExpenses={displayedRecurring} onDelete={(id) => setTransactions(prev => prev.filter(t => t.id !== id))} onDeleteRecurring={(id) => setRecurringExpenses(prev => prev.filter(i => i.id !== id))} onUpdateRecurring={handleUpdateRecurring} />
+                    <div className="w-full"><Dashboard transactions={displayedTransactions} cardDebts={displayedDebts} /></div>
                   </div>
                 )}
                 {reportMode === 'calendar' && (
                   <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
-                    {/* 左側：核心日曆組件 */}
-                    <div className="lg:col-span-8">
-                      <TransactionCalendar transactions={transactions} onDateClick={(date) => setSelectedDate(date)} />
-                    </div>
-
-                    {/* 右側：當日細節戰報 (豪華交互版) */}
+                    <div className="lg:col-span-8"><TransactionCalendar transactions={displayedTransactions} onDateClick={(date) => setSelectedDate(date)} /></div>
                     <div className="lg:col-span-4 space-y-4">
+                      {/* 右側日曆戰報 */}
                       <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-slate-100 min-h-[500px] flex flex-col">
-                        {/* 標題區 */}
                         <div className="flex justify-between items-start mb-6">
-                          <div>
-                            <h3 className="text-xl font-black text-slate-800 tracking-tighter">{selectedDate}</h3>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Intelligence Report</p>
-                          </div>
-                          <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
-                            <CalendarIcon size={20} strokeWidth={3} />
-                          </div>
+                          <div><h3 className="text-xl font-black text-slate-800">{selectedDate}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Report</p></div>
+                          <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><CalendarIcon size={20} /></div>
                         </div>
-
-                        {/* 交易列表區 (可編輯版) */}
                         <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                          {transactions.filter(t => t.date === selectedDate).length > 0 ? (
-                            transactions.filter(t => t.date === selectedDate).map((t) => (
+                          {displayedTransactions.filter(t => t.date === selectedDate).length > 0 ? (
+                            displayedTransactions.filter(t => t.date === selectedDate).map((t) => (
                               <div key={t.id} className="p-4 bg-slate-50 rounded-[1.5rem] border border-slate-100 flex flex-col gap-3 group hover:bg-white hover:shadow-lg hover:border-indigo-100 transition-all duration-300">
-
-                                {/* 第一層：分類與金額 */}
                                 <div className="flex justify-between items-center">
                                   <div className="flex items-center gap-3">
                                     <div className={`p-2 rounded-xl ${t.type.toLowerCase() === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                                       {t.type.toLowerCase() === 'income' ? <TrendingUp size={14} strokeWidth={3} /> : <TrendingDown size={14} strokeWidth={3} />}
                                     </div>
-                                    {/* 可編輯分類 */}
-                                    <input
-                                      type="text"
-                                      value={t.category}
-                                      onChange={(e) => handleUpdateTransaction({ ...t, category: e.target.value })}
-                                      className="bg-transparent text-xs font-black text-slate-700 outline-none w-24 focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors"
-                                    />
+                                    <input type="text" value={t.category} onChange={(e) => handleUpdateTransaction({ ...t, category: e.target.value })} className="bg-transparent text-xs font-black text-slate-700 outline-none w-24 focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors" />
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <span className={`text-xs font-black ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                      {t.type.toLowerCase() === 'income' ? '+' : '-'}
-                                    </span>
-                                    {/* 可編輯金額 */}
-                                    <input
-                                      type="number"
-                                      value={t.amount}
-                                      onChange={(e) => handleUpdateTransaction({ ...t, amount: Number(e.target.value) })}
-                                      className={`w-24 bg-transparent text-sm font-black text-right outline-none focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}
-                                    />
+                                    <span className={`text-xs font-black ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>{t.type.toLowerCase() === 'income' ? '+' : '-'}</span>
+                                    <input type="number" value={t.amount} onChange={(e) => handleUpdateTransaction({ ...t, amount: Number(e.target.value) })} className={`w-24 bg-transparent text-sm font-black text-right outline-none focus:text-indigo-600 border-b border-transparent focus:border-indigo-300 transition-colors ${t.type.toLowerCase() === 'income' ? 'text-emerald-500' : 'text-rose-500'}`} />
                                   </div>
                                 </div>
-
-                                {/* 第二層：備註與支付方式 */}
                                 <div className="flex justify-between items-end pl-11">
                                   <div className="flex flex-col gap-1 flex-1">
-                                    {/* 可編輯備註 */}
-                                    <input
-                                      type="text"
-                                      value={t.note || ''}
-                                      placeholder="點擊新增備註..."
-                                      onChange={(e) => handleUpdateTransaction({ ...t, note: e.target.value })}
-                                      className="bg-transparent text-[10px] text-slate-400 font-bold outline-none w-full focus:text-slate-600 placeholder:text-slate-300"
-                                    />
-
-                                    {/* 支付細節顯示 (信用卡/現金) */}
+                                    <input type="text" value={t.note || ''} placeholder="點擊新增備註..." onChange={(e) => handleUpdateTransaction({ ...t, note: e.target.value })} className="bg-transparent text-[10px] text-slate-400 font-bold outline-none w-full focus:text-slate-600 placeholder:text-slate-300" />
                                     <div className="flex items-center gap-1.5">
                                       <div className={`w-1.5 h-1.5 rounded-full ${t.paymentMethod === PaymentMethod.CREDIT_CARD ? 'bg-indigo-400' : 'bg-emerald-400'}`}></div>
-                                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-                                        {t.paymentMethod === PaymentMethod.CREDIT_CARD
-                                          ? `信用卡 (${creditCards.find(c => c.id === t.creditCardId)?.name || t.cardName || '未知'})`
-                                          : `現金 (${initialData.accounts.find(a => a.id === t.accountId)?.name || '帳戶'})`}
-                                      </span>
+                                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{t.paymentMethod === PaymentMethod.CREDIT_CARD ? `信用卡 (${creditCards.find(c => c.id === t.creditCardId)?.name || t.cardName || '未知'})` : `現金 (${initialData.accounts.find(a => a.id === t.accountId)?.name || '帳戶'})`}</span>
                                     </div>
                                   </div>
-
-                                  {/* 刪除按鈕 (Hover 才顯示) */}
-                                  <button
-                                    onClick={() => { if (window.confirm('總裁，確定要銷毀此紀錄嗎？')) setTransactions(prev => prev.filter(x => x.id !== t.id)) }}
-                                    className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
+                                  <button onClick={() => { if (window.confirm('確定要刪除此紀錄嗎？')) setTransactions(prev => prev.filter(x => x.id !== t.id)) }} className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={14} /></button>
                                 </div>
                               </div>
                             ))
-                          ) : (
-                            <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-                              <Sparkles size={24} className="opacity-20 mb-2" />
-                              <p className="text-[10px] font-black uppercase tracking-widest">本日無戰事</p>
-                            </div>
-                          )}
+                          ) : <div className="flex flex-col items-center justify-center py-20 text-slate-300"><Sparkles size={24} className="opacity-20 mb-2" /><p className="text-[10px] font-black uppercase tracking-widest">本日無戰事</p></div>}
                         </div>
-
-                        {/* 底部：當日結算統計 (自動計算) */}
-                        {transactions.filter(t => t.date === selectedDate).length > 0 && (
+                        {displayedTransactions.filter(t => t.date === selectedDate).length > 0 && (
                           <div className="mt-6 pt-6 border-t border-dashed border-slate-200">
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">當日淨結算</span>
-                              <span className={`text-lg font-black ${transactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0) >= 0
-                                ? 'text-emerald-600' : 'text-rose-500'
-                                }`}>
-                                ${transactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0).toLocaleString()}
-                              </span>
+                              <span className={`text-lg font-black ${displayedTransactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>${displayedTransactions.filter(t => t.date === selectedDate).reduce((sum, t) => t.type.toLowerCase() === 'income' ? sum + Number(t.amount) : sum - Number(t.amount), 0).toLocaleString()}</span>
                             </div>
                           </div>
                         )}
@@ -635,29 +608,19 @@ const App: React.FC = () => {
                   </div>
                 )}
                 {reportMode === 'forecast' && (
-                  // ⭐ 這裡！我把您的「支出預測」功能完整補回了！
                   <div className="max-w-4xl mx-auto space-y-6">
                     <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
                       <div className="flex justify-between items-center mb-8 relative z-10">
-                        <div>
-                          <h3 className="text-2xl font-black italic tracking-tighter uppercase">支出預測</h3>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Weekly Expense Outlook</p>
-                        </div>
-                        <div className="bg-rose-500/10 border border-rose-500/20 px-4 py-2 rounded-2xl text-right">
-                          <p className="text-[9px] text-rose-500 font-black uppercase">未來 8 週總支出預估</p>
-                          <p className="text-sm font-mono font-black text-white">Payment Required</p>
-                        </div>
+                        <div><h3 className="text-2xl font-black italic tracking-tighter uppercase">支出預測</h3><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Weekly Expense Outlook</p></div>
+                        <div className="bg-rose-500/10 border border-rose-500/20 px-4 py-2 rounded-2xl text-right"><p className="text-[9px] text-rose-500 font-black uppercase">未來 8 週總支出預估</p><p className="text-sm font-mono font-black text-white">Payment Required</p></div>
                       </div>
-
                       <div className="grid grid-cols-1 gap-3 relative z-10">
                         {(() => {
                           const expenseCalendar: Record<string, number> = {};
-                          const addExpense = (dateStr: string, amount: number) => {
-                            if (!expenseCalendar[dateStr]) expenseCalendar[dateStr] = 0;
-                            expenseCalendar[dateStr] += amount;
-                          };
+                          const addExpense = (dateStr: string, amount: number) => { if (!expenseCalendar[dateStr]) expenseCalendar[dateStr] = 0; expenseCalendar[dateStr] += amount; };
 
-                          transactions.forEach(t => {
+                          // 預測也只用 displayedTransactions (目前帳本)
+                          displayedTransactions.forEach(t => {
                             if (t.type === TransactionType.EXPENSE && t.paymentMethod === PaymentMethod.CREDIT_CARD) {
                               const card = creditCards.find(c => c.id === t.creditCardId || c.name === t.cardName);
                               if (card) {
@@ -668,68 +631,21 @@ const App: React.FC = () => {
                                 if (txDate.getDate() > closingDay) payDate.setMonth(payDate.getMonth() + 1);
                                 payDate.setDate(paymentDay);
                                 if (paymentDay < closingDay) payDate.setMonth(payDate.getMonth() + 1);
-                                if (payDate > new Date()) {
-                                  addExpense(format(payDate, 'yyyy-MM-dd'), Number(t.amount));
-                                }
+                                if (payDate > new Date()) addExpense(format(payDate, 'yyyy-MM-dd'), Number(t.amount));
                               }
                             }
                           });
-
-                          cardDebts.forEach(debt => {
-                            if (!debt.isPaidThisMonth) {
-                              const card = creditCards.find(c => c.name === debt.cardName);
-                              const pDay = card?.paymentDay || 25;
-                              for (let i = 0; i < 3; i++) {
-                                const d = new Date(); d.setMonth(d.getMonth() + i); d.setDate(pDay);
-                                if (d > new Date()) addExpense(format(d, 'yyyy-MM-dd'), Number(debt.monthlyAmount));
-                              }
-                            }
-                          });
-
-                          for (let i = 0; i < 60; i++) {
-                            const d = addDays(new Date(), i);
-                            const dayNum = d.getDate();
-                            const dateStr = format(d, 'yyyy-MM-dd');
-                            recurringExpenses.forEach(re => {
-                              if (re.dayOfMonth === dayNum && re.type.toUpperCase() === 'EXPENSE') {
-                                addExpense(dateStr, Number(re.amount));
-                              }
-                            });
-                          }
+                          // 債務和固定支出也使用 displayedX 系列，確保預測跟著帳本走
+                          displayedDebts.forEach(debt => { if (!debt.isPaidThisMonth) { const card = creditCards.find(c => c.name === debt.cardName); const pDay = card?.paymentDay || 25; for (let i = 0; i < 3; i++) { const d = new Date(); d.setMonth(d.getMonth() + i); d.setDate(pDay); if (d > new Date()) addExpense(format(d, 'yyyy-MM-dd'), Number(debt.monthlyAmount)); } } });
+                          for (let i = 0; i < 60; i++) { const d = addDays(new Date(), i); const dayNum = d.getDate(); const dateStr = format(d, 'yyyy-MM-dd'); displayedRecurring.forEach(re => { if (re.dayOfMonth === dayNum && re.type.toUpperCase() === 'EXPENSE') addExpense(dateStr, Number(re.amount)); }); }
 
                           return Array.from({ length: 8 }).map((_, i) => {
-                            const weekStart = addDays(new Date(), i * 7);
-                            const weekEnd = addDays(weekStart, 6);
-                            const weekNum = i + 1;
-                            let weeklyTotalExpense = 0;
-                            for (let d = 0; d < 7; d++) {
-                              const dayStr = format(addDays(weekStart, d), 'yyyy-MM-dd');
-                              if (expenseCalendar[dayStr]) {
-                                weeklyTotalExpense += expenseCalendar[dayStr];
-                              }
-                            }
-
+                            const weekStart = addDays(new Date(), i * 7); const weekEnd = addDays(weekStart, 6); const weekNum = i + 1;
+                            let weeklyTotalExpense = 0; for (let d = 0; d < 7; d++) { const dayStr = format(addDays(weekStart, d), 'yyyy-MM-dd'); if (expenseCalendar[dayStr]) weeklyTotalExpense += expenseCalendar[dayStr]; }
                             return (
                               <div key={i} className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${weeklyTotalExpense > 0 ? 'bg-rose-600/10 border-rose-500/40' : 'bg-white/5 border-white/5 opacity-50'}`}>
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-xs font-black text-slate-500">W{weekNum}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded-lg">
-                                      {format(weekStart, 'MM/dd')} - {format(weekEnd, 'MM/dd')}
-                                    </span>
-                                  </div>
-                                  {weeklyTotalExpense > 0 ? (
-                                    <span className="text-[9px] font-black text-rose-400 uppercase tracking-tighter animate-pulse">⚠️ 本週有支出帳單</span>
-                                  ) : (
-                                    <span className="text-[9px] font-bold text-slate-500">無預定支出</span>
-                                  )}
-                                </div>
-                                <div className="text-right">
-                                  <span className={`text-2xl font-mono font-black ${weeklyTotalExpense > 0 ? 'text-rose-500' : 'text-slate-600'}`}>
-                                    ${weeklyTotalExpense.toLocaleString()}
-                                  </span>
-                                  <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">需準備現金</p>
-                                </div>
+                                <div className="flex flex-col gap-1"><div className="flex items-center gap-3"><span className="text-xs font-black text-slate-500">W{weekNum}</span><span className="text-[10px] font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded-lg">{format(weekStart, 'MM/dd')} - {format(weekEnd, 'MM/dd')}</span></div>{weeklyTotalExpense > 0 ? <span className="text-[9px] font-black text-rose-400 uppercase tracking-tighter animate-pulse">⚠️ 本週有支出帳單</span> : <span className="text-[9px] font-bold text-slate-500">無預定支出</span>}</div>
+                                <div className="text-right"><span className={`text-2xl font-mono font-black ${weeklyTotalExpense > 0 ? 'text-rose-500' : 'text-slate-600'}`}>${weeklyTotalExpense.toLocaleString()}</span><p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">需準備現金</p></div>
                               </div>
                             );
                           });
@@ -743,16 +659,16 @@ const App: React.FC = () => {
           )}
 
           {activeTab === 'savings' && (
-            <SavingsPlanner plans={savingsPlans} transactions={transactions} accounts={initialData.accounts} onAdd={(p) => setSavingsPlans(prev => [...prev, { ...p, id: crypto.randomUUID() }])} onDelete={(id) => setSavingsPlans(prev => prev.filter(p => p.id !== id))} onUpdatePlan={handleUpdatePlan} onAddTransaction={handleAddTransaction} />
+            <SavingsPlanner plans={displayedPlans} transactions={displayedTransactions} accounts={initialData.accounts} onAdd={handleAddPlan} onDelete={(id) => setSavingsPlans(prev => prev.filter(p => p.id !== id))} onUpdatePlan={handleUpdatePlan} onAddTransaction={handleAddTransaction} />
           )}
 
           {activeTab === 'budget' && (
-            <BudgetPlanner transactions={transactions} cardDebts={cardDebts} creditCards={creditCards} recurringExpenses={recurringExpenses} onDelete={(id) => setTransactions(prev => prev.filter(t => t.id !== id))} onDeleteRecurring={(id) => setRecurringExpenses(prev => prev.filter(i => i.id !== id))} onUpdateRecurring={handleUpdateRecurring} />
+            <BudgetPlanner transactions={displayedTransactions} cardDebts={displayedDebts} creditCards={creditCards} recurringExpenses={displayedRecurring} onDelete={(id) => setTransactions(prev => prev.filter(t => t.id !== id))} onDeleteRecurring={(id) => setRecurringExpenses(prev => prev.filter(i => i.id !== id))} onUpdateRecurring={handleUpdateRecurring} />
           )}
 
           {activeTab === 'cards' && (
             <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-500">
-              <CreditCardManager debts={cardDebts} onPayInstallment={handlePayCardInstallment} onDeleteDebt={(id) => setCardDebts(prev => prev.filter(d => d.id !== id))} onUpdateDebt={handleUpdateDebt} />
+              <CreditCardManager debts={displayedDebts} onPayInstallment={handlePayCardInstallment} onDeleteDebt={(id) => setCardDebts(prev => prev.filter(d => d.id !== id))} onUpdateDebt={handleUpdateDebt} />
             </div>
           )}
         </div>
