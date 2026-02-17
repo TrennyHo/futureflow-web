@@ -27,30 +27,16 @@ import { AllocationModal } from './components/AllocationModal';
  * 總裁專屬：圖示強制顯影引擎
  * 原因：esm.sh 傳回的是物件格式，React 19 需要透過此方法強制轉譯為 SVG 組件
  */
-// 1. 核心引擎導入
-import * as Icons from 'lucide-react';
-import { createElement } from 'react';
-
-/**
- * 總裁專屬：強制顯影與防崩潰引擎
- */
-const createIcon = (iconName: string) => (props: any) => {
-  // 解決 ESM 模組可能隱藏在 .default 的問題
-  const allIcons = (Icons as any).default || Icons;
-  const component = allIcons[iconName];
-
-  if (!component) {
-    console.warn(`[圖示缺失] ${iconName} 未定義`);
-    return null; // 找不到也不要讓 App 崩潰
-  }
-
-  return createElement(component, {
-    size: 20,
-    strokeWidth: 2.5,
-    color: "currentColor", // 強制顯色
-    ...props
-  });
-};
+// ✅ 只匯入您有需要的圖示
+import {
+  LayoutDashboard,
+  Wallet,
+  CreditCard,
+  Calendar as CalendarIcon,
+  TrendingUp,
+  Settings,
+  ChevronDown // 剛才新增帳本切換功能需要的
+} from 'lucide-react';
 
 // 2. 補齊所有變數，特別是造成崩潰的 ShieldAlert
 const Target = createIcon('Target');
