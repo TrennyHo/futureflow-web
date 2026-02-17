@@ -4,6 +4,7 @@ import {
   CreditCard, PaymentMethod, RecurringExpense, InitialData, Account, SavingsPlan
 } from './types.ts';
 
+
 // 1. 組件導入區  
 import { TransactionForm } from './components/TransactionForm.tsx';
 import { BudgetMonitor } from './components/BudgetMonitor.tsx';
@@ -675,6 +676,7 @@ const App: React.FC = () => {
           <Settings size={20} />
         </button>
       </div>
+
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* --- 系統設定區塊 --- */}
         {showSettings && (
