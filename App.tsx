@@ -163,6 +163,7 @@ const App: React.FC = () => {
   const [pendingAllocation, setPendingAllocation] = useState<{
     income: Transaction;
     advice: ReturnType<typeof distributeIncome>;
+    futureObligations?: number;
   } | null>(null);
 
   // 版本控制
@@ -254,8 +255,19 @@ const App: React.FC = () => {
     setTransactions(updatedTransactions);
 
     if (t.type === TransactionType.INCOME) {
+      // 💡 算出未來 8 週的「現實壓力」 (約 2 個月)
+      let futureTotal = 0;
+      displayedRecurring.forEach(re => {
+        if (re.type.toUpperCase() === 'EXPENSE') futureTotal += Number(re.amount) * 2;
+      });
+      displayedDebts.forEach(debt => {
+        if (!debt.isPaidThisMonth) futureTotal += Number(debt.monthlyAmount) * 2;
+      });
+
       const advice = distributeIncome(t.amount, displayedDebts, displayedPlans, 7, dailySpendingGoal);
-      setPendingAllocation({ income: t, advice: advice });
+
+      // 把 futureTotal 一起傳進去
+      setPendingAllocation({ income: t, advice: advice, futureObligations: futureTotal });
       setShowAllocationModal(true);
     }
 
@@ -455,7 +467,7 @@ const App: React.FC = () => {
           </div>
 
           {/* 導航 */}
-          <nav className="flex bg-slate-100 p-1 rounded-2xl flex-1 max-w-[400px] mx-1 sm:mx-4">
+          <nav className="hidden md:flex bg-slate-100 p-1 rounded-2xl flex-1 max-w-[400px] mx-1 sm:mx-4">
             {[
               { id: 'input', label: '記帳', icon: PlusCircle },
               { id: 'daily', label: '報表', icon: BarChart3 },

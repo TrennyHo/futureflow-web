@@ -1,32 +1,37 @@
 {
-  "name": "@dataconnect/generated",
+  "name": "future-flow-ai",
+  "private": true,
   "version": "1.0.0",
-  "author": "Firebase <firebase-support@google.com> (https://firebase.google.com/)",
-  "description": "Generated SDK For example",
-  "license": "Apache-2.0",
-  "engines": {
-    "node": " >=18.0"
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
-  "typings": "index.d.ts",
-  "module": "esm/index.esm.js",
-  "main": "index.cjs.js",
-  "browser": "esm/index.esm.js",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "require": "./index.cjs.js",
-      "default": "./esm/index.esm.js"
-    },
-    "./react": {
-      "types": "./react/index.d.ts",
-      "require": "./react/index.cjs.js",
-      "import": "./react/esm/index.esm.js",
-      "default": "./react/esm/index.esm.js"
-    },
-    "./package.json": "./package.json"
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.463.0",
+    "recharts": "^2.15.0",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^11.0.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.3.0",
+    "firebase": "^11.3.0"
   },
-  "peerDependencies": {
-    "firebase": "^11.3.0 || ^12.0.0",
-    "@tanstack-query-firebase/react": "^2.0.0"
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.2.2",
+    "vite": "^5.3.1"
+  },
+  "overrides": {
+    "react": "$react",
+    "react-dom": "$react-dom"
   }
 }
