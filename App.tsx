@@ -457,16 +457,42 @@ const App: React.FC = () => {
 
       <header className="bg-white border-b sticky top-0 z-[100] h-16 px-4 flex items-center shadow-sm">
         <div className="max-w-6xl mx-auto w-full flex justify-between items-center gap-2">
-          {/* Logo */}
-          <div className="flex items-center gap-2 shrink-0">
+
+          {/* 🌟 左側：Logo 文字 + 帳本切換器融合 */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <img src={LOGO_URL} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 object-cover" alt="logo" onError={(e: any) => e.target.src = FALLBACK_LOGO} />
-            <div className="hidden xs:flex flex-col leading-none">
+            <div className="hidden xs:flex flex-col leading-none mr-1">
               <h1 className="text-sm font-black text-slate-800">森活科技</h1>
               <span className="text-[9px] font-black text-emerald-600 uppercase">FutureFlow</span>
             </div>
+
+            {/* 帳本切換器 (按鈕化) */}
+            <div className="relative group">
+              <button className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs sm:text-sm font-black text-slate-800 transition-colors shadow-sm border border-slate-200">
+                {ledgers.find(l => l.id === activeLedgerId)?.name}
+                <ChevronDown size={14} className="text-slate-400" />
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-[200]">
+                {ledgers.map(ledger => (
+                  <div key={ledger.id} className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${activeLedgerId === ledger.id ? 'bg-indigo-50' : ''}`}>
+                    <button onClick={() => setActiveLedgerId(ledger.id)} className={`text-left text-sm font-bold flex-1 ${activeLedgerId === ledger.id ? 'text-indigo-600' : 'text-slate-600'}`}>
+                      {ledger.name}
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={(e) => { e.stopPropagation(); handleRenameLedger(ledger.id, ledger.name); }} className="p-1 text-slate-300 hover:text-indigo-500"><Edit2 size={12} /></button>
+                    </div>
+                  </div>
+                ))}
+                <div className="border-t border-slate-100 p-2">
+                  <button onClick={() => setShowLedgerManager(true)} className="w-full text-center text-xs font-black text-slate-400 hover:text-indigo-500 py-2 flex items-center justify-center gap-1">
+                    <Settings size={12} /> 管理帳本
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* 導航 */}
+          {/* 🌟 中間：導航 (手機版自動隱藏，桌面版顯示) */}
           <nav className="hidden md:flex bg-slate-100 p-1 rounded-2xl flex-1 max-w-[400px] mx-1 sm:mx-4">
             {[
               { id: 'input', label: '記帳', icon: PlusCircle },
@@ -491,51 +517,20 @@ const App: React.FC = () => {
             })}
           </nav>
 
-          {/* 工具 */}
+          {/* 🌟 右側：工具 */}
           <div className="flex items-center gap-0 sm:gap-1 shrink-0">
             <button onClick={() => setShowCategorySettings(true)} className="p-2 text-slate-400 hover:text-emerald-600 transition-colors">
-              <Tags className="w-4 h-4" />
+              <Tags className="w-4 h-4 sm:w-4 sm:h-4" />
             </button>
             <button onClick={() => setShowSettings(!showSettings)} className={`p-2 rounded-xl transition-all ${showSettings ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              <Settings className="w-4 h-4" />
+              <Settings className="w-4 h-4 sm:w-4 sm:h-4" />
             </button>
             <button onClick={() => { if (window.confirm('確定要登出並結束使用嗎？')) logout(); }} className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl ml-1 transition-all">
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
       </header>
-
-      {/* 🚀 帳本切換器 (增強版：支援自定義) */}
-      <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex justify-between items-center">
-        <div className="relative group">
-          <button className="flex items-center gap-2 text-xl font-black text-slate-800">
-            {ledgers.find(l => l.id === activeLedgerId)?.name}
-            <ChevronDown size={20} className="text-slate-400" />
-          </button>
-          <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-50">
-            {ledgers.map(ledger => (
-              <div key={ledger.id} className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${activeLedgerId === ledger.id ? 'bg-indigo-50' : ''}`}>
-                <button onClick={() => setActiveLedgerId(ledger.id)} className={`text-left text-sm font-bold flex-1 ${activeLedgerId === ledger.id ? 'text-indigo-600' : 'text-slate-600'}`}>
-                  {ledger.name}
-                </button>
-                {/* 只有當不是個人帳本(預設第一個)時，才允許編輯/刪除 */}
-                <div className="flex items-center gap-1">
-                  <button onClick={(e) => { e.stopPropagation(); handleRenameLedger(ledger.id, ledger.name); }} className="p-1 text-slate-300 hover:text-indigo-500"><Edit2 size={12} /></button>
-                </div>
-              </div>
-            ))}
-            <div className="border-t border-slate-100 p-2">
-              <button onClick={() => setShowLedgerManager(true)} className="w-full text-center text-xs font-black text-slate-400 hover:text-indigo-500 py-2 flex items-center justify-center gap-1">
-                <Settings size={12} /> 管理帳本
-              </button>
-            </div>
-          </div>
-        </div>
-        <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-all">
-          <Settings size={20} />
-        </button>
-      </div>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* 設定面板 */}
